@@ -10,3 +10,6 @@ __pycache__/
 # Fetched third-party webpage/PDF caches are large and may contain copyrighted text.
 data/fresh_page_audit/raw/
 data/fresh_page_audit/texts/
+
+# Advisor-facing notes and presentation materials stay local.
+reports/
