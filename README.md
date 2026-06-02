@@ -1,8 +1,15 @@
 # GEO Exposure Pilot
 
-This project contains a 20-query pilot measurement study of GEO/RAG source exposure in generative search.
+本项目是一个 20 个 query 的 pilot measurement 实验，用来观察生成式搜索系统中的 GEO/RAG source exposure 问题。
 
-## Repository Layout
+实验关注两类来源暴露：
+
+- `final citation`：最终回答中展示给用户的引用链接；
+- `source pool`：API raw response 中可见的搜索/来源结果，可能没有进入最终回答。
+
+这两层暴露需要分开分析，不能合并成一个比例。
+
+## 目录结构
 
 ```text
 geo_exposure_pilot/
@@ -26,19 +33,23 @@ geo_exposure_pilot/
     └── api_route.md
 ```
 
-## Experiment Count
+## 实验规模
 
-Use one clean experimental count for reporting:
+当前只统计一次正式采集实验：
 
-- Formal collection experiment: 1 OpenAI API pilot.
-- Scope: 20 queries, 1 run per query.
-- Output scale: 91 final citation rows, 796 source-pool rows, 792 normalized unique URLs, and 675 successfully fetched text bodies.
+- 正式采集实验：1 次 OpenAI API pilot；
+- query 数量：20 个；
+- 每个 query 的运行次数：1 次；
+- final citation rows：91；
+- source-pool rows：796；
+- 规范化后的唯一 URL：792；
+- 成功抓取并抽取正文的 URL：675。
 
-Fresh page audit and manual case review are analysis stages, not separate collection experiments.
+`fresh_page_audit` 和人工 case review 属于后续分析阶段，不算新的采集实验。
 
-## Quick Start
+## 快速开始
 
-Inspect existing outputs:
+检查当前采集输出：
 
 ```bash
 cd /home/walnutpz/research-harness
@@ -46,13 +57,13 @@ cd /home/walnutpz/research-harness
 .venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py --write-report
 ```
 
-Regenerate the fresh page audit from current citation/source CSVs:
+基于当前 `citations.csv` 和 `sources.csv` 重新生成 fresh page audit：
 
 ```bash
 .venv/bin/python experiments/geo_exposure_pilot/src/fresh_page_audit.py
 ```
 
-Run a fresh collection only if you intentionally want to overwrite current data:
+只有在明确想覆盖当前数据时，才重新运行正式采集：
 
 ```bash
 export OPENAI_API_KEY="..."
@@ -67,22 +78,32 @@ export OPENAI_API_KEY="..."
   --overwrite
 ```
 
-## Important Files
+## 重要文件
 
-- `config/queries.csv`: canonical 20-query manifest.
-- `data/raw/`: raw OpenAI Responses API JSON files, one per query run.
-- `data/processed/openai_web_search_results.jsonl`: normalized answer/source/citation summaries.
-- `data/processed/citations.csv`: final citation rows.
-- `data/processed/sources.csv`: source-pool rows exposed by API web-search calls.
-- `data/fresh_page_audit/`: normalized URL inventory, page/PDF fetch manifest, extracted text cache, and review queue.
-- `reports/初步结果_2026_0602.md`: concise advisor-facing progress report.
-- `reports/tables/pilot_queries_for_report.xlsx`: two-column query table for slides or advisor updates.
+- `config/queries.csv`：20 个 pilot query 的正式清单。
+- `src/collect_openai_web_search.py`：调用 OpenAI web search API，采集回答、final citations、source pool 和 raw response。
+- `src/inspect_outputs.py`：检查 raw response、citation/source 数量和基本质量。
+- `src/fresh_page_audit.py`：从 citation/source CSV 重建 URL inventory，抓取网页/PDF，抽取正文并生成人工复核队列。
+- `data/raw/`：OpenAI Responses API 的原始 JSON，每个 query run 一个文件。
+- `data/collections/`：从 raw response 生成的 Markdown 版本，方便人工阅读。
+- `data/processed/openai_web_search_results.jsonl`：规范化后的回答、source 和 citation 摘要。
+- `data/processed/citations.csv`：final citation 行。
+- `data/processed/sources.csv`：API web-search 调用中暴露的 source-pool 行。
+- `data/fresh_page_audit/`：规范化 URL inventory、网页/PDF 抓取 manifest、review queue 和抓取摘要。
+- `reports/初步结果_2026_0602.md`：给导师汇报用的阶段性结果。
+- `reports/tables/pilot_queries_for_report.xlsx`：给汇报材料使用的 20 个 query 表格。
 
-## Method Notes
+## 方法说明
 
-The study keeps two exposure layers separate:
+本实验的主线流程是：
 
-- Final citations: URLs visible as citations in the generated answer.
-- Source pool: URLs returned in API web-search source metadata, including pages not finally cited.
+```text
+config/queries.csv
+  -> src/collect_openai_web_search.py
+  -> data/raw + data/processed
+  -> src/fresh_page_audit.py
+  -> data/fresh_page_audit
+  -> reports/初步结果_2026_0602.md
+```
 
-Do not merge these layers into one prevalence number.
+需要注意的是，`data/fresh_page_audit/raw/` 和 `data/fresh_page_audit/texts/` 没有提交到 GitHub。它们是抓取到的第三方网页/PDF 原文和正文缓存，体积较大，也不适合直接公开提交。相关结构化信息保留在 `url_inventory.csv`、`fetch_manifest.csv`、`review_queue.csv` 和 `summary.json` 中。
