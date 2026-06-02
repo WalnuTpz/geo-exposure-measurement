@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+.env.*
+!.env.example
+
+# Fetched third-party webpage/PDF caches are large and may contain copyrighted text.
+data/fresh_page_audit/raw/
+data/fresh_page_audit/texts/
