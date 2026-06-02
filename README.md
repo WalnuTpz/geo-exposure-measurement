@@ -25,9 +25,6 @@ geo_exposure_pilot/
 │   ├── processed/
 │   ├── collections/
 │   └── fresh_page_audit/
-├── reports/
-│   ├── 初步结果_2026_0602.md
-│   └── tables/
 └── docs/
     ├── experiment_plan_v2.md
     └── api_route.md
@@ -90,8 +87,6 @@ export OPENAI_API_KEY="..."
 - `data/processed/citations.csv`：final citation 行。
 - `data/processed/sources.csv`：API web-search 调用中暴露的 source-pool 行。
 - `data/fresh_page_audit/`：规范化 URL inventory、网页/PDF 抓取 manifest、review queue 和抓取摘要。
-- `reports/初步结果_2026_0602.md`：给导师汇报用的阶段性结果。
-- `reports/tables/pilot_queries_for_report.xlsx`：给汇报材料使用的 20 个 query 表格。
 
 ## 方法说明
 
@@ -103,7 +98,6 @@ config/queries.csv
   -> data/raw + data/processed
   -> src/fresh_page_audit.py
   -> data/fresh_page_audit
-  -> reports/初步结果_2026_0602.md
 ```
 
 需要注意的是，`data/fresh_page_audit/raw/` 和 `data/fresh_page_audit/texts/` 没有提交到 GitHub。它们是抓取到的第三方网页/PDF 原文和正文缓存，体积较大，也不适合直接公开提交。相关结构化信息保留在 `url_inventory.csv`、`fetch_manifest.csv`、`review_queue.csv` 和 `summary.json` 中。

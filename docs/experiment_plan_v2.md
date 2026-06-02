@@ -445,7 +445,7 @@ If the pilot passes:
 
 ## 13. Current Implementation Status
 
-Historical note: this section describes the implementation status when the v2 plan was first written. The API pilot has since been run, annotated, analyzed, and summarized under `experiments/geo_exposure_pilot/data/` and `experiments/geo_exposure_pilot/reports/`.
+Historical note: this section describes the implementation status when the v2 plan was first written. The API pilot has since been run, with collection outputs and fresh page audit artifacts stored under `experiments/geo_exposure_pilot/data/`.
 
 Implemented:
 
