@@ -20,7 +20,6 @@ geo_exposure_pilot/
 │   └── fresh_page_audit/
 ├── reports/
 │   ├── 初步结果_2026_0602.md
-│   ├── 每周工作.md
 │   └── tables/
 └── docs/
     ├── experiment_plan_v2.md
