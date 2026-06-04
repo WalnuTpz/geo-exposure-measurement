@@ -1,11 +1,8 @@
 # GEO Exposure Measurement
 
-这个仓库用来保存 GEO exposure 实验的数据和脚本。目前主要有两批数据，二者分开存放：
+这个仓库记录的是一个生成式搜索 source exposure 的测量实验。实验从一组用户式 query 出发，调用带 web search 的模型，保存回答、最终引用链接和 API 返回的 source pool；随后重新抓取这些 URL，整理成后续人工复核可用的 page audit 队列。
 
-- `pilot_20/openai_20x1`：早期 20 个 query 的 pilot；
-- `benchmark_100/openai_100x1`：后来扩展的 100 个 benchmark-style query 实验。
-
-我没有把两批数据混在一起。脚本是共用的，但 query 文件、raw response、整理后的 CSV、collection Markdown 和 page audit 结果都放在各自目录下。
+当前重点不是直接判断网页是否“恶意”，而是先观察真实生成式搜索回答会接触到哪些来源，以及这些来源中是否存在值得进一步检查的 GEO-compatible 页面。
 
 ## 目录
 
