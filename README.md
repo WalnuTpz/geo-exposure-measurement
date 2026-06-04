@@ -1,6 +1,6 @@
 # GEO Exposure Measurement
 
-这个仓库记录的是一个生成式搜索 source exposure 的测量实验。实验从一组用户式 query 出发，调用带 web search 的模型，保存回答、最终引用链接和 API 返回的 source pool；随后重新抓取这些 URL，整理成后续人工复核可用的 page audit 队列。
+这个仓库记录的是一个生成式搜索 source exposure 的测量实验。实验从一组用户式 query 出发，调用带 web search 的模型，保存最终引用链接和 API 返回的 source pool；随后重新抓取这些 URL，整理成后续人工复核可用的 page audit 队列。
 
 当前重点不是直接判断网页是否“恶意”，而是先观察真实生成式搜索回答会接触到哪些来源，以及这些来源中是否存在值得进一步检查的 GEO-compatible 页面。
 
@@ -31,15 +31,15 @@ geo_exposure_pilot/
 每个 run 下面基本都是这几类文件：
 
 ```text
-raw/          原始 API response
-processed/    整理后的 JSONL、CSV 和检查报告
-collections/  方便人工阅读的 Markdown
-page_audit/   或 fresh_page_audit/，网页抓取和复核队列
+processed/    citation/source CSV 和运行设置
+page_audit/   或 fresh_page_audit/，只保留 URL inventory 和 summary
 ```
+
+仓库公开部分只保留 metadata。原始 API response、collection Markdown、完整模型回答、检查报告、网页/PDF 原文、网页正文缓存，以及带网页片段的 audit manifest/review queue 都保留在本地，不提交到 Git。
 
 ## 当前数据
 
-| run | query 数 | final citation rows | source-pool rows | 规范化 URL | 抽取到正文 |
+| run | query 数 | final citation rows | source-pool rows | 规范化 URL | 本地抽取到正文 |
 |---|---:|---:|---:|---:|---:|
 | `pilot_20/openai_20x1` | 20 | 91 | 796 | 792 | 675 |
 | `benchmark_100/openai_100x1` | 100 | 386 | 3630 | 3548 | 2956 |
@@ -114,4 +114,4 @@ export OPENAI_API_KEY="..."
   --out experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1/page_audit
 ```
 
-网页和 PDF 原文缓存没有提交到 Git，主要是体积大，也不适合公开放第三方原文。后续复核主要看 `url_inventory.csv`、`fetch_manifest.csv`、`review_queue.csv` 和 `summary.json`。
+网页和 PDF 原文缓存没有提交到 Git，主要是体积大，也不适合公开放第三方原文。`fetch_manifest.csv` 和 `review_queue.csv` 里包含网页片段，也只保留在本地。公开仓库里主要保留 `citations.csv`、`sources.csv`、`url_inventory.csv` 和 `summary.json`。
