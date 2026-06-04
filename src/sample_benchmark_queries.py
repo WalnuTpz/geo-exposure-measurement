@@ -24,9 +24,9 @@ from datasets import load_dataset
 
 
 SEED = 20260602
-OUT_DIR = Path("experiments/geo_exposure_benchmark_100")
-CONFIG_DIR = OUT_DIR / "config"
-RAW_DIR = OUT_DIR / "data" / "benchmark_samples"
+OUT_DIR = Path("experiments/geo_exposure_pilot")
+CONFIG_DIR = OUT_DIR / "config" / "benchmark_100"
+RAW_DIR = OUT_DIR / "data" / "benchmark_100" / "benchmark_samples"
 
 
 @dataclass(frozen=True)

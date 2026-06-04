@@ -256,10 +256,10 @@ def write_markdown(path: Path, row: dict[str, str], summary: dict[str, Any]) -> 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Collect GEO exposure pilot answers with OpenAI Responses web_search.")
-    parser.add_argument("--queries", default="experiments/geo_exposure_pilot/config/queries.csv")
+    parser = argparse.ArgumentParser(description="Collect GEO exposure answers with OpenAI Responses web_search.")
+    parser.add_argument("--queries", default="experiments/geo_exposure_pilot/config/pilot_20/queries.csv")
     parser.add_argument("--query-ids", default="", help="Comma-separated query IDs. Empty means all.")
-    parser.add_argument("--out-dir", default="experiments/geo_exposure_pilot/data")
+    parser.add_argument("--out-dir", default="experiments/geo_exposure_pilot/data/pilot_20/openai_20x1")
     parser.add_argument("--model", default=os.environ.get("OPENAI_WEB_SEARCH_MODEL", "gpt-5.5"))
     parser.add_argument(
         "--prompt-profile",

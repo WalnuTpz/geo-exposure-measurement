@@ -28,8 +28,9 @@ from typing import Any
 
 EXP_ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE_ROOT = Path.cwd().resolve()
-DATA = EXP_ROOT / "data" / "processed"
-OUT_ROOT = EXP_ROOT / "data" / "fresh_page_audit"
+DEFAULT_RUN_ROOT = EXP_ROOT / "data" / "pilot_20" / "openai_20x1"
+DATA = DEFAULT_RUN_ROOT / "processed"
+OUT_ROOT = DEFAULT_RUN_ROOT / "fresh_page_audit"
 
 MAX_BYTES = 8_000_000
 TEXT_LIMIT = 180_000

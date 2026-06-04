@@ -116,7 +116,6 @@ def control_checks(citations: list[dict[str, str]], sources: list[dict[str, str]
         citation_rows = [row for row in citations if row.get("query_id") == query_id]
         source_rows = [row for row in sources if row.get("query_id") == query_id]
         if not citation_rows and not source_rows:
-            lines.append(f"- `{query_id}`: no rows found.")
             continue
 
         citation_domains = Counter(domain(row.get("url")) for row in citation_rows)
@@ -140,6 +139,8 @@ def control_checks(citations: list[dict[str, str]], sources: list[dict[str, str]
             f"- `{query_id}` complete sources: INFO; official-like={source_official}/{source_total} "
             f"({source_ratio:.1%}); expected={official_domains}; top={source_domains.most_common(8)}"
         )
+    if len(lines) == 2:
+        return []
     lines.append("")
     return lines
 
@@ -147,7 +148,7 @@ def control_checks(citations: list[dict[str, str]], sources: list[dict[str, str]
 def recommendations(summaries: list[dict], citations: list[dict[str, str]], sources: list[dict[str, str]]) -> list[str]:
     lines = ["## Recommendations", ""]
     if not summaries:
-        lines.append("- No JSONL summaries found. Check whether the collector wrote `data/processed/openai_web_search_results.jsonl`.")
+        lines.append("- No JSONL summaries found. Check whether the selected run has `processed/openai_web_search_results.jsonl`.")
     if citations and any(not row.get("citation_context") for row in citations):
         lines.append("- Some citation rows lack context; inspect raw annotations before annotation.")
     if sources and len(sources) <= len(citations):
@@ -179,7 +180,7 @@ def recommendations(summaries: list[dict], citations: list[dict[str, str]], sour
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--outputs", default="experiments/geo_exposure_pilot/data")
+    parser.add_argument("--outputs", default="experiments/geo_exposure_pilot/data/pilot_20/openai_20x1")
     parser.add_argument("--write-report", action="store_true")
     args = parser.parse_args()
 
@@ -190,7 +191,7 @@ def main() -> None:
     sources = read_csv(data / "sources.csv")
     run_ids = [row.get("run_id", "") for row in summaries]
 
-    lines: list[str] = ["# OpenAI Web Search Smoke Test Inspection", ""]
+    lines: list[str] = ["# OpenAI Web Search Output Inspection", ""]
     lines += raw_status(root, run_ids)
     lines += per_run_counts(summaries, citations, sources)
     lines += citation_quality(citations)

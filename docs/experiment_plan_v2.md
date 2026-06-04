@@ -1,14 +1,16 @@
-# GEO Exposure Measurement Experiment Plan v2
+# GEO Exposure 实验计划 v2
 
-## 1. Goal
+## 1. 目标
 
-This study measures whether real generative search answers expose users to GEO-compatible web pages, which query types and platforms are most vulnerable, whether suspect pages displace better sources, and whether they can influence generated answers.
+这个实验想看的不是“网页是不是一定恶意”，而是更现实的问题：真实生成式搜索回答里，会不会引用或接触到一些容易被 GEO 利用的页面；这些页面更常出现在哪类 query；它们有没有替代更好的来源；如果后续能做影响实验，再看它们是否会改变回答。
 
-The study should avoid claiming webpage intent. The core object is not "malicious webpages" but:
+因此这里尽量不判断网页作者的主观 intent。核心对象先定义成：
 
 > GEO-compatible source exposure: generated answers citing or surfacing pages that have structural features useful for GEO manipulation, such as commercial incentives, affiliate ranking, low originality, freshness bait, authority-style packaging, or selective framing.
 
-## 2. Optimized Research Questions
+也就是说，重点不是直接说“这是恶意网页”，而是看它是否具备可能影响生成式搜索引用、排序或回答 framing 的结构性特征。
+
+## 2. Research Questions
 
 ### RQ1: Prevalence
 
@@ -221,7 +223,8 @@ Pilot size: 20 queries.
 
 Manifest:
 
-`experiments/geo_exposure_pilot/config/queries.csv`
+- 20-query: `experiments/geo_exposure_pilot/config/pilot_20/queries.csv`
+- 100-query: `experiments/geo_exposure_pilot/config/benchmark_100/queries.csv`
 
 Design:
 
@@ -443,24 +446,26 @@ If the pilot passes:
 - annotate all cited URLs and sampled source-panel URLs;
 - run influence ablation on high-risk displaced cases.
 
-## 13. Current Implementation Status
+## 13. 当前实现状态
 
-Historical note: this section describes the implementation status when the v2 plan was first written. The API pilot has since been run, with collection outputs and fresh page audit artifacts stored under `experiments/geo_exposure_pilot/data/`.
+这个计划最早是为 20-query pilot 写的。现在仓库里已经把 20-query 和 100-query 两批数据分开放在 `data/` 下面。
 
-Implemented:
+已经完成：
 
-- 20-query manifest;
-- API route collector;
-- manual ChatGPT Pro UI protocol;
-- legacy Q01 example collection;
-- legacy Q01 interim annotation consensus;
-- literature-methods summary;
-- per-run API output structure.
+- 20-query pilot 的 query list 和 API 采集结果；
+- 100-query benchmark-style query list 和 API 采集结果；
+- OpenAI web search 采集脚本；
+- 输出检查脚本；
+- 根据 `citations.csv` 和 `sources.csv` 重建 URL inventory / review queue 的 page audit 脚本；
+- 两批实验各自独立的 raw、processed、collections 和 page audit 目录。
 
-Next tasks:
+当前数据：
 
-1. Run API or manual UI collection.
-2. Generate annotation batches from collected URLs.
-3. Run three-annotator consensus.
-4. Add post-processing metrics script.
-5. Select high-risk S2/S3 cases for influence ablation.
+1. `pilot_20/openai_20x1`：20 个 query，91 条 final citation，796 条 source-pool row。
+2. `benchmark_100/openai_100x1`：100 个 query，386 条 final citation，3630 条 source-pool row。
+
+下一步：
+
+1. 先从 100-query 的 page audit queue 里挑优先级高的页面人工复核。
+2. 按 query 类别比较 final citation 和 source pool 的暴露差异。
+3. 挑出少量真正有说服力的 suspicious case，用来和导师讨论后续是否值得做影响实验。

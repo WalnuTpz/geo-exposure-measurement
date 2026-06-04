@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INPUT_CSV = ROOT / "config" / "queries.csv"
-OUTPUT_XLSX = ROOT / "reports" / "benchmark_100_queries.xlsx"
+INPUT_CSV = ROOT / "config" / "benchmark_100" / "queries.csv"
+OUTPUT_XLSX = ROOT / "reports" / "benchmark_100" / "benchmark_100_queries.xlsx"
 
 CATEGORY_NAMES = {
     "product_recommendation": "产品推荐",

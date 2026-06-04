@@ -1,72 +1,84 @@
-# GEO Exposure Pilot
+# GEO Exposure Measurement
 
-本项目是一个 20 个 query 的 pilot measurement 实验，用来观察生成式搜索系统中的 GEO/RAG source exposure 问题。
+这个仓库用来保存 GEO exposure 实验的数据和脚本。目前主要有两批数据，二者分开存放：
 
-实验关注两类来源暴露：
+- `pilot_20/openai_20x1`：早期 20 个 query 的 pilot；
+- `benchmark_100/openai_100x1`：后来扩展的 100 个 benchmark-style query 实验。
 
-- `final citation`：最终回答中展示给用户的引用链接；
-- `source pool`：API raw response 中可见的搜索/来源结果，可能没有进入最终回答。
+我没有把两批数据混在一起。脚本是共用的，但 query 文件、raw response、整理后的 CSV、collection Markdown 和 page audit 结果都放在各自目录下。
 
-这两层暴露需要分开分析，不能合并成一个比例。
-
-## 目录结构
+## 目录
 
 ```text
 geo_exposure_pilot/
-├── README.md
 ├── config/
-│   └── queries.csv
+│   ├── pilot_20/
+│   │   └── queries.csv
+│   └── benchmark_100/
+│       ├── queries.csv
+│       └── sampling_manifest.json
 ├── src/
 │   ├── collect_openai_web_search.py
 │   ├── inspect_outputs.py
-│   └── fresh_page_audit.py
+│   ├── fresh_page_audit.py
+│   ├── sample_benchmark_queries.py
+│   └── build_query_excel.py
 ├── data/
-│   ├── raw/
-│   ├── processed/
-│   ├── collections/
-│   └── fresh_page_audit/
+│   ├── pilot_20/
+│   │   └── openai_20x1/
+│   └── benchmark_100/
+│       └── openai_100x1/
 └── docs/
-    ├── experiment_plan_v2.md
-    └── api_route.md
 ```
 
-## 实验规模
+每个 run 下面基本都是这几类文件：
 
-当前只统计一次正式采集实验：
+```text
+raw/          原始 API response
+processed/    整理后的 JSONL、CSV 和检查报告
+collections/  方便人工阅读的 Markdown
+page_audit/   或 fresh_page_audit/，网页抓取和复核队列
+```
 
-- 正式采集实验：1 次 OpenAI API pilot；
-- query 数量：20 个；
-- 每个 query 的运行次数：1 次；
-- final citation rows：91；
-- source-pool rows：796；
-- 规范化后的唯一 URL：792；
-- 成功抓取并抽取正文的 URL：675。
+## 当前数据
 
-`fresh_page_audit` 和人工 case review 属于后续分析阶段，不算新的采集实验。
+| run | query 数 | final citation rows | source-pool rows | 规范化 URL | 抽取到正文 |
+|---|---:|---:|---:|---:|---:|
+| `pilot_20/openai_20x1` | 20 | 91 | 796 | 792 | 675 |
+| `benchmark_100/openai_100x1` | 100 | 386 | 3630 | 3548 | 2956 |
 
-## 快速开始
+这里的 `final citation` 指模型最终回答里展示给用户的引用链接；`source pool` 指 API raw response 里能看到的搜索来源。两者后续分析时要分开看。
 
-检查当前采集输出：
+## 检查数据
+
+20-query：
 
 ```bash
 cd /home/walnutpz/research-harness
 
-.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py --write-report
+.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py \
+  --outputs experiments/geo_exposure_pilot/data/pilot_20/openai_20x1 \
+  --write-report
 ```
 
-基于当前 `citations.csv` 和 `sources.csv` 重新生成 fresh page audit：
+100-query：
 
 ```bash
-.venv/bin/python experiments/geo_exposure_pilot/src/fresh_page_audit.py
+.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py \
+  --outputs experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1 \
+  --write-report
 ```
 
-只有在明确想覆盖当前数据时，才重新运行正式采集：
+## 重新采集
+
+如果需要重新跑 20-query：
 
 ```bash
 export OPENAI_API_KEY="..."
 
 .venv/bin/python experiments/geo_exposure_pilot/src/collect_openai_web_search.py \
-  --query-ids Q01,Q02,Q03,Q04,Q05,Q06,Q07,Q08,Q09,Q10,Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,Q19,Q20 \
+  --queries experiments/geo_exposure_pilot/config/pilot_20/queries.csv \
+  --out-dir experiments/geo_exposure_pilot/data/pilot_20/openai_20x1 \
   --model gpt-5.5 \
   --prompt-profile minimal \
   --reasoning-effort low \
@@ -75,29 +87,34 @@ export OPENAI_API_KEY="..."
   --overwrite
 ```
 
-## 重要文件
+如果需要重新跑 100-query：
 
-- `config/queries.csv`：20 个 pilot query 的正式清单。
-- `src/collect_openai_web_search.py`：调用 OpenAI web search API，采集回答、final citations、source pool 和 raw response。
-- `src/inspect_outputs.py`：检查 raw response、citation/source 数量和基本质量。
-- `src/fresh_page_audit.py`：从 citation/source CSV 重建 URL inventory，抓取网页/PDF，抽取正文并生成人工复核队列。
-- `data/raw/`：OpenAI Responses API 的原始 JSON，每个 query run 一个文件。
-- `data/collections/`：从 raw response 生成的 Markdown 版本，方便人工阅读。
-- `data/processed/openai_web_search_results.jsonl`：规范化后的回答、source 和 citation 摘要。
-- `data/processed/citations.csv`：final citation 行。
-- `data/processed/sources.csv`：API web-search 调用中暴露的 source-pool 行。
-- `data/fresh_page_audit/`：规范化 URL inventory、网页/PDF 抓取 manifest、review queue 和抓取摘要。
-
-## 方法说明
-
-本实验的主线流程是：
-
-```text
-config/queries.csv
-  -> src/collect_openai_web_search.py
-  -> data/raw + data/processed
-  -> src/fresh_page_audit.py
-  -> data/fresh_page_audit
+```bash
+.venv/bin/python experiments/geo_exposure_pilot/src/collect_openai_web_search.py \
+  --queries experiments/geo_exposure_pilot/config/benchmark_100/queries.csv \
+  --out-dir experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1 \
+  --model gpt-5.5 \
+  --prompt-profile minimal \
+  --reasoning-effort low \
+  --search-context-size medium \
+  --runs 1 \
+  --overwrite
 ```
 
-需要注意的是，`data/fresh_page_audit/raw/` 和 `data/fresh_page_audit/texts/` 没有提交到 GitHub。它们是抓取到的第三方网页/PDF 原文和正文缓存，体积较大，也不适合直接公开提交。相关结构化信息保留在 `url_inventory.csv`、`fetch_manifest.csv`、`review_queue.csv` 和 `summary.json` 中。
+## Page Audit
+
+20-query 默认路径已经写在脚本里：
+
+```bash
+.venv/bin/python experiments/geo_exposure_pilot/src/fresh_page_audit.py
+```
+
+100-query 需要显式指定目录：
+
+```bash
+.venv/bin/python experiments/geo_exposure_pilot/src/fresh_page_audit.py \
+  --data experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1/processed \
+  --out experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1/page_audit
+```
+
+网页和 PDF 原文缓存没有提交到 Git，主要是体积大，也不适合公开放第三方原文。后续复核主要看 `url_inventory.csv`、`fetch_manifest.csv`、`review_queue.csv` 和 `summary.json`。

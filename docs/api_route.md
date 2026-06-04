@@ -1,38 +1,36 @@
-# OpenAI API Collection Route
+# OpenAI API 采集路线
 
-This runbook documents the active API route for the GEO exposure pilot.
+这里记录的是目前实际使用的 API 采集方式。核心思路很简单：把 query 发给带 web search 的 OpenAI Responses API，然后保存 raw response，再从里面拆出回答、final citation 和 source pool。
 
-## Purpose
+## 采集脚本会保存什么
 
-The measurement study collects search-enabled model answers through the OpenAI Responses API so that raw responses, final citations, and source-pool metadata are auditable.
+`src/collect_openai_web_search.py` 会保存这些内容：
 
-The collector saves:
+- 模型最终回答；
+- 回答里展示给用户的 citation URL；
+- `web_search_call` 里能看到的 source URL；
+- 每个 query 的 raw JSON；
+- 整理后的 JSONL 和 CSV；
+- 方便人工阅读的 Markdown collection。
 
-- final answer text;
-- URL citation annotations;
-- `web_search_call` output items;
-- consulted source URLs from `web_search_call.action.sources`;
-- normalized JSONL summaries;
-- flattened citation/source CSV files;
-- per-query Markdown collection files.
+## 运行前准备
 
-## Prerequisites
-
-Set an API key before running real collection:
+需要先设置 API key：
 
 ```bash
 export OPENAI_API_KEY="..."
 ```
 
-Use `--dry-run` to inspect request payloads without calling the API.
+如果只想看请求格式，可以加 `--dry-run`，这样不会真正调用 API。
 
-## Smoke Test
+## 跑 20-query
 
 ```bash
 cd /home/walnutpz/research-harness
 
 .venv/bin/python experiments/geo_exposure_pilot/src/collect_openai_web_search.py \
-  --query-ids Q01 \
+  --queries experiments/geo_exposure_pilot/config/pilot_20/queries.csv \
+  --out-dir experiments/geo_exposure_pilot/data/pilot_20/openai_20x1 \
   --model gpt-5.5 \
   --prompt-profile minimal \
   --reasoning-effort low \
@@ -41,13 +39,14 @@ cd /home/walnutpz/research-harness
   --overwrite
 ```
 
-## Full 20-Query Pilot
+## 跑 100-query
 
 ```bash
 cd /home/walnutpz/research-harness
 
 .venv/bin/python experiments/geo_exposure_pilot/src/collect_openai_web_search.py \
-  --query-ids Q01,Q02,Q03,Q04,Q05,Q06,Q07,Q08,Q09,Q10,Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,Q19,Q20 \
+  --queries experiments/geo_exposure_pilot/config/benchmark_100/queries.csv \
+  --out-dir experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1 \
   --model gpt-5.5 \
   --prompt-profile minimal \
   --reasoning-effort low \
@@ -56,30 +55,33 @@ cd /home/walnutpz/research-harness
   --overwrite
 ```
 
-## Outputs
+## 检查输出
 
-- `data/raw/Qxx_runN.json`: raw API responses.
-- `data/processed/run_manifest.json`: collection settings.
-- `data/processed/openai_web_search_results.jsonl`: normalized per-query summaries.
-- `data/processed/citations.csv`: flattened URL citation annotations.
-- `data/processed/sources.csv`: flattened source-pool rows from `web_search_call.action.sources`.
-- `data/collections/Qxx_runN.md`: human-readable collection files for downstream annotation.
-
-## Inspect Outputs
+20-query：
 
 ```bash
-.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py --write-report
+.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py \
+  --outputs experiments/geo_exposure_pilot/data/pilot_20/openai_20x1 \
+  --write-report
 ```
 
-The inspection report is written to `data/processed/inspection_report.md`.
+100-query：
 
-## Prompt Profiles
+```bash
+.venv/bin/python experiments/geo_exposure_pilot/src/inspect_outputs.py \
+  --outputs experiments/geo_exposure_pilot/data/benchmark_100/openai_100x1 \
+  --write-report
+```
 
-The collector supports `--prompt-profile`:
+检查报告会写到对应 run 的 `processed/inspection_report.md`。
 
-- `minimal`: main measurement profile. It sends a normal search request and does not expose study metadata to the model.
-- `bare_query`: closest to the web UI behavior. It sends only the raw query text.
-- `primary_aware`: conservative assistant profile. It may underestimate commercial/aggregator citation exposure.
-- `official_diagnostic`: diagnostic control for finding primary-source candidates.
-- `research_context`: old research-heavy profile. Do not use for the main experiment.
+## Prompt profile
 
+目前正式实验用 `minimal`。这个 profile 只要求模型正常搜索并用 citation 回答，不会把研究背景暴露给模型。
+
+脚本里还保留了几个辅助 profile：
+
+- `bare_query`：更接近直接把 query 丢给搜索系统；
+- `primary_aware`：更偏向官方/一手来源，适合做对照；
+- `official_diagnostic`：专门检查官方源是否容易被找到；
+- `research_context`：早期版本，不建议作为正式实验主设置。
