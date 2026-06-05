@@ -35,7 +35,7 @@ processed/    citation/source CSV 和运行设置
 page_audit/   或 fresh_page_audit/，只保留 URL inventory 和 summary
 ```
 
-仓库公开部分只保留 metadata。原始 API response、collection Markdown、完整模型回答、检查报告、网页/PDF 原文、网页正文缓存，以及带网页片段的 audit manifest/review queue 都保留在本地，不提交到 Git。
+仓库公开部分只保留 metadata。公开 CSV 中的 URL 已去掉 query string；citation/source 文件只保留 query、run、order、URL、domain、title 等结构化字段，不包含模型回答片段或网页正文。原始 API response、collection Markdown、完整模型回答、检查报告、网页/PDF 原文、网页正文缓存，以及带网页片段的 audit manifest/review queue 都保留在本地，不提交到 Git。
 
 ## 当前数据
 
