@@ -2,20 +2,22 @@
 """Reduce collected outputs to public metadata-only CSVs.
 
 The collection and page-audit scripts keep richer local artifacts for review.
-Before publishing the repository, this script strips answer snippets and URL
-query strings from the tracked CSVs.
+This script strips answer snippets and URL query strings from local CSV copies.
+Neither the original artifacts nor the sanitized copies belong in Git.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import urllib.parse
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from fresh_page_audit import domain, norm_url, url_id
+
+
+EXP_ROOT = Path(__file__).resolve().parent.parent
 
 RUNS = [
     ("pilot_20/openai_20x1", "fresh_page_audit"),
@@ -50,18 +52,6 @@ def public_url(url: str) -> str:
     )
 
 
-def domain(url: str) -> str:
-    return urllib.parse.urlsplit(url).netloc.lower().removeprefix("www.")
-
-
-def url_id(url: str) -> str:
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
-
-
-def split_semicolon(value: str) -> list[str]:
-    return [part for part in value.split(";") if part]
-
-
 def sanitize_citations(path: Path) -> None:
     rows = []
     for row in read_csv(path):
@@ -71,12 +61,13 @@ def sanitize_citations(path: Path) -> None:
                 "query_id": row["query_id"],
                 "run_id": row["run_id"],
                 "citation_order": row["citation_order"],
+                "url_id": row.get("url_id") or url_id(norm_url(row["url"])),
                 "url": url,
                 "domain": domain(url),
                 "title": row.get("title", ""),
             }
         )
-    write_csv(path, rows, ["query_id", "run_id", "citation_order", "url", "domain", "title"])
+    write_csv(path, rows, ["query_id", "run_id", "citation_order", "url_id", "url", "domain", "title"])
 
 
 def sanitize_sources(path: Path) -> None:
@@ -88,52 +79,22 @@ def sanitize_sources(path: Path) -> None:
                 "query_id": row["query_id"],
                 "run_id": row["run_id"],
                 "source_order": row["source_order"],
+                "url_id": row.get("url_id") or url_id(norm_url(row["url"])),
                 "url": url,
                 "domain": domain(url),
                 "title": row.get("title", ""),
                 "source_type": row.get("source_type", ""),
             }
         )
-    write_csv(path, rows, ["query_id", "run_id", "source_order", "url", "domain", "title", "source_type"])
+    write_csv(path, rows, ["query_id", "run_id", "source_order", "url_id", "url", "domain", "title", "source_type"])
 
 
 def sanitize_inventory(path: Path) -> None:
-    grouped: dict[str, dict[str, Any]] = {}
-    query_ids: dict[str, set[str]] = defaultdict(set)
-    citation_orders: dict[str, list[str]] = defaultdict(list)
-    titles: dict[str, set[str]] = defaultdict(set)
-
+    rows = []
     for row in read_csv(path):
         url = public_url(row["url"])
-        if url not in grouped:
-            grouped[url] = {
-                "url_id": url_id(url),
-                "url": url,
-                "domain": domain(url),
-                "in_final_citation": False,
-                "source_count": 0,
-                "citation_count": 0,
-            }
-        rec = grouped[url]
-        rec["in_final_citation"] = rec["in_final_citation"] or row.get("in_final_citation") == "True"
-        rec["source_count"] += int(row.get("source_count") or 0)
-        rec["citation_count"] += int(row.get("citation_count") or 0)
-        query_ids[url].update(split_semicolon(row.get("query_ids", "")))
-        citation_orders[url].extend(split_semicolon(row.get("citation_orders", "")))
-        if row.get("titles"):
-            titles[url].add(row["titles"])
-
-    rows = []
-    for url, rec in grouped.items():
-        rows.append(
-            {
-                **rec,
-                "in_final_citation": str(rec["in_final_citation"]),
-                "query_ids": ";".join(sorted(query_ids[url])),
-                "citation_orders": ";".join(citation_orders[url]),
-                "titles": " | ".join(sorted(titles[url]))[:500],
-            }
-        )
+        # Redaction changes the display URL, never the page identity or its counts.
+        rows.append({**row, "url": url, "domain": domain(url)})
     rows.sort(key=lambda r: (r["in_final_citation"] != "True", r["query_ids"], r["domain"], r["url"]))
     write_csv(
         path,
@@ -144,7 +105,7 @@ def sanitize_inventory(path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-root", default="data")
+    parser.add_argument("--data-root", default=str(EXP_ROOT / "data"))
     args = parser.parse_args()
 
     data_root = Path(args.data_root)

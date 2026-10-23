@@ -4,6 +4,8 @@ import argparse
 import csv
 import json
 import os
+import re
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -13,6 +15,7 @@ from typing import Any
 
 
 API_URL = "https://api.openai.com/v1/responses"
+EXP_ROOT = Path(__file__).resolve().parent.parent
 
 
 PROMPT_PROFILES = {
@@ -64,38 +67,52 @@ Answer the user query as a search-enabled assistant. Use inline citations and ke
 
 def read_queries(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+        missing = {"query_id", "query", "category", "risk_level"} - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"Missing query columns: {', '.join(sorted(missing))}")
+        rows = list(reader)
+    ids: set[str] = set()
+    for row in rows:
+        query_id = row["query_id"]
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", query_id):
+            raise ValueError(f"Invalid query_id for an output filename: {query_id!r}")
+        if query_id in ids:
+            raise ValueError(f"Duplicate query_id: {query_id}")
+        if not row["query"].strip():
+            raise ValueError(f"Empty query: {query_id}")
+        ids.add(query_id)
+    if not rows:
+        raise ValueError(f"No queries in {path}")
+    return rows
 
 
 def select_queries(rows: list[dict[str, str]], query_ids: list[str]) -> list[dict[str, str]]:
     if not query_ids:
         return rows
     wanted = set(query_ids)
+    missing = wanted - {row["query_id"] for row in rows}
+    if missing:
+        raise ValueError(f"Unknown query IDs: {', '.join(sorted(missing))}")
     return [row for row in rows if row["query_id"] in wanted]
 
 
-def response_output_text(raw: dict[str, Any]) -> str:
-    if isinstance(raw.get("output_text"), str):
-        return raw["output_text"]
-    chunks: list[str] = []
+def text_contents(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    chunks = []
     for item in raw.get("output", []) or []:
         if item.get("type") != "message":
             continue
         for content in item.get("content", []) or []:
             if content.get("type") in {"output_text", "text"} and isinstance(content.get("text"), str):
-                chunks.append(content["text"])
-    return "\n".join(chunks).strip()
+                chunks.append(content)
+    return chunks
 
 
-def collect_annotations(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    annotations: list[dict[str, Any]] = []
-    for item in raw.get("output", []) or []:
-        if item.get("type") != "message":
-            continue
-        for content in item.get("content", []) or []:
-            for annotation in content.get("annotations", []) or []:
-                annotations.append(annotation)
-    return annotations
+def response_output_text(raw: dict[str, Any]) -> str:
+    chunks = text_contents(raw)
+    if chunks:
+        return "\n".join(content["text"] for content in chunks)
+    return raw.get("output_text") or ""
 
 
 def normalize_citation(annotation: dict[str, Any]) -> dict[str, Any] | None:
@@ -121,24 +138,25 @@ def normalize_citation(annotation: dict[str, Any]) -> dict[str, Any] | None:
 
 def collect_citations(raw: dict[str, Any]) -> list[dict[str, Any]]:
     citations: list[dict[str, Any]] = []
-    seen: set[tuple[str | None, str | None]] = set()
-    output_text = response_output_text(raw)
-    for annotation in collect_annotations(raw):
-        citation = normalize_citation(annotation)
-        if not citation:
-            continue
-        start = citation.get("start_index")
-        end = citation.get("end_index")
-        if isinstance(start, int) and isinstance(end, int) and output_text:
-            left = max(0, start - 180)
-            right = min(len(output_text), end + 180)
-            citation["cited_text_span"] = output_text[start:end]
-            citation["citation_context"] = output_text[left:right].replace("\n", " ")
-        key = (citation.get("url"), citation.get("title"))
-        if key in seen:
-            continue
-        seen.add(key)
-        citations.append(citation)
+    offset = 0
+    for content in text_contents(raw):
+        text = content["text"]
+        for annotation in content.get("annotations", []) or []:
+            citation = normalize_citation(annotation)
+            if not citation:
+                continue
+            start = citation.get("start_index")
+            end = citation.get("end_index")
+            if isinstance(start, int) and isinstance(end, int):
+                if not 0 <= start <= end <= len(text):
+                    raise ValueError(f"Citation span {start}..{end} exceeds its text block")
+                citation["cited_text_span"] = text[start:end]
+                citation["citation_context"] = text[max(0, start - 180):end + 180].replace("\n", " ")
+                # API offsets belong to this block; exported offsets address the joined answer.
+                citation["start_index"] = offset + start
+                citation["end_index"] = offset + end
+            citations.append(citation)
+        offset += len(text) + 1
     return citations
 
 
@@ -169,11 +187,23 @@ def make_input(row: dict[str, str], prompt_profile: str) -> str:
     return PROMPT_PROFILES[prompt_profile]["user_template"].format(**row)
 
 
+def make_payload(row: dict[str, str], args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "model": args.model,
+        "reasoning": {"effort": args.reasoning_effort},
+        "tools": [{"type": "web_search", "search_context_size": args.search_context_size}],
+        "tool_choice": "required",
+        "include": ["web_search_call.action.sources"],
+        "instructions": PROMPT_PROFILES[args.prompt_profile]["instructions"],
+        "input": make_input(row, args.prompt_profile),
+    }
+
+
 def append_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     file_exists = path.exists()
     with path.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
         for row in rows:
@@ -227,8 +257,8 @@ def write_markdown(path: Path, row: dict[str, str], summary: dict[str, Any]) -> 
         "|---:|---|---|---|",
     ]
     for index, citation in enumerate(citations, start=1):
-        title = citation.get("title") or ""
-        url = citation.get("url") or ""
+        title = (citation.get("title") or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+        url = (citation.get("url") or "").replace("|", "%7C")
         span = f"{citation.get('start_index')}..{citation.get('end_index')}"
         lines.append(f"| {index} | {title} | {url} | {span} |")
 
@@ -242,8 +272,8 @@ def write_markdown(path: Path, row: dict[str, str], summary: dict[str, Any]) -> 
         ]
     )
     for index, source in enumerate(sources, start=1):
-        title = source.get("title") or ""
-        url = source.get("url") or ""
+        title = (source.get("title") or "").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+        url = (source.get("url") or "").replace("|", "%7C")
         source_type = source.get("type") or source.get("source_type") or ""
         lines.append(f"| {index} | {title} | {url} | {source_type} |")
 
@@ -257,9 +287,9 @@ def write_markdown(path: Path, row: dict[str, str], summary: dict[str, Any]) -> 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect GEO exposure answers with OpenAI Responses web_search.")
-    parser.add_argument("--queries", default="experiments/geo_exposure_pilot/config/pilot_20/queries.csv")
+    parser.add_argument("--queries", default=str(EXP_ROOT / "config/pilot_20/queries.csv"))
     parser.add_argument("--query-ids", default="", help="Comma-separated query IDs. Empty means all.")
-    parser.add_argument("--out-dir", default="experiments/geo_exposure_pilot/data/pilot_20/openai_20x1")
+    parser.add_argument("--out-dir", default=str(EXP_ROOT / "data/local/pilot_20/openai_20x1"))
     parser.add_argument("--model", default=os.environ.get("OPENAI_WEB_SEARCH_MODEL", "gpt-5.5"))
     parser.add_argument(
         "--prompt-profile",
@@ -272,25 +302,40 @@ def main() -> None:
     parser.add_argument("--runs", type=int, default=1, help="Independent repeated API calls per query.")
     parser.add_argument("--sleep", type=float, default=1.0)
     parser.add_argument("--timeout", type=int, default=180)
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite normalized JSONL/CSV outputs for this run.")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--overwrite", action="store_true", help="Replace this run's collection and page-audit directories.")
+    parser.add_argument("--dry-run", action="store_true", help="Print request payloads without writing files or calling the API.")
     args = parser.parse_args()
 
+    if args.runs < 1 or args.timeout <= 0 or args.sleep < 0:
+        parser.error("--runs and --timeout must be positive; --sleep must be nonnegative")
+    rows = select_queries(
+        read_queries(Path(args.queries)),
+        [item.strip() for item in args.query_ids.split(",") if item.strip()],
+    )
+    requests = [(row, make_payload(row, args)) for row in rows]
+    if args.dry_run:
+        for row, payload in requests:
+            for run_index in range(1, args.runs + 1):
+                print(json.dumps({"run_id": f"{row['query_id']}_run{run_index}", "request_payload": payload}, ensure_ascii=False))
+        return
+
     api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key and not args.dry_run:
+    if not api_key:
         raise SystemExit("OPENAI_API_KEY is not set. Set it before running, or use --dry-run.")
 
     root = Path(args.out_dir)
+    if root.exists() and any(root.iterdir()) and not args.overwrite:
+        parser.error(f"Output directory is not empty: {root}. Use a new directory or --overwrite.")
+    if args.overwrite:
+        for name in ("raw", "collections", "processed", "page_audit", "fresh_page_audit"):
+            directory = root / name
+            if directory.exists():
+                shutil.rmtree(directory)
     raw_dir = root / "raw"
     collections_dir = root / "collections"
     data_dir = root / "processed"
     for directory in (raw_dir, collections_dir, data_dir):
         directory.mkdir(parents=True, exist_ok=True)
-
-    rows = select_queries(
-        read_queries(Path(args.queries)),
-        [item.strip() for item in args.query_ids.split(",") if item.strip()],
-    )
 
     summary_path = data_dir / "openai_web_search_results.jsonl"
     manifest_path = data_dir / "run_manifest.json"
@@ -311,39 +356,18 @@ def main() -> None:
 
     citations_csv = data_dir / "citations.csv"
     sources_csv = data_dir / "sources.csv"
-    if args.overwrite:
-        for generated in (summary_path, citations_csv, sources_csv):
-            if generated.exists():
-                generated.unlink()
-
-    summary_mode = "w" if args.overwrite else "a"
-    with summary_path.open(summary_mode, encoding="utf-8") as summary_file:
-        for row in rows:
+    with summary_path.open("w", encoding="utf-8") as summary_file:
+        for row, payload in requests:
             for run_index in range(1, args.runs + 1):
                 run_id = f"{row['query_id']}_run{run_index}"
-                payload: dict[str, Any] = {
-                    "model": args.model,
-                    "reasoning": {"effort": args.reasoning_effort},
-                    "tools": [
-                        {
-                            "type": "web_search",
-                            "search_context_size": args.search_context_size,
-                        }
-                    ],
-                    "tool_choice": "required",
-                    "include": ["web_search_call.action.sources"],
-                    "instructions": PROMPT_PROFILES[args.prompt_profile]["instructions"],
-                    "input": make_input(row, args.prompt_profile),
-                }
 
                 collected_at = datetime.now(timezone.utc).isoformat()
-                if args.dry_run:
-                    raw = {"dry_run": True, "request_payload": payload}
-                else:
-                    raw = post_response(payload, api_key=api_key or "", timeout=args.timeout)
+                raw = post_response(payload, api_key=api_key, timeout=args.timeout)
 
                 raw_path = raw_dir / f"{run_id}.json"
                 raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+                if raw.get("status") != "completed" or raw.get("error"):
+                    raise RuntimeError(f"{run_id}: response did not complete; inspect {raw_path}")
 
                 citations = collect_citations(raw)
                 sources = collect_sources(raw)

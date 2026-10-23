@@ -17,14 +17,13 @@ import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Callable, Iterable
 
-from datasets import load_dataset
-
-
 SEED = 20260602
-OUT_DIR = Path("experiments/geo_exposure_pilot")
+OUT_DIR = Path(__file__).resolve().parent.parent
+AMAZON_DATASET = "khanmu2003/amazon-shopping-queries-dataset"
 CONFIG_DIR = OUT_DIR / "config" / "benchmark_100"
 RAW_DIR = OUT_DIR / "data" / "benchmark_100" / "benchmark_samples"
 
@@ -139,7 +138,7 @@ def fetch_sequential(
     rows: list[Row] = []
     offset = 0
     total = None
-    while total is None or offset < total:
+    while len(rows) < limit and (total is None or offset < total):
         data = hf_rows(dataset, config, split, offset, page_size)
         total = int(data.get("num_rows_total", 0))
         for item in data.get("rows", []):
@@ -148,7 +147,7 @@ def fetch_sequential(
         if len(rows) >= limit:
             break
         time.sleep(0.25)
-    return rows
+    return rows[:limit]
 
 
 def fetch_random_pages(
@@ -162,7 +161,7 @@ def fetch_random_pages(
 ) -> list[Row]:
     first = hf_rows(dataset, config, split, 0, 1)
     total = int(first.get("num_rows_total", 0))
-    offsets = sorted({rng.randrange(0, max(1, total - page_size)) for _ in range(pages)})
+    offsets = sorted({rng.randrange(0, max(1, total - page_size + 1)) for _ in range(pages)})
     if 0 not in offsets:
         offsets.insert(0, 0)
     rows: list[Row] = []
@@ -220,14 +219,14 @@ def stream_rows(
     converter: Callable[[dict, int], Row],
     max_scan: int,
 ) -> list[Row]:
+    from datasets import load_dataset
+
     if config:
         ds = load_dataset(dataset, config, split=split, streaming=True)
     else:
         ds = load_dataset(dataset, split=split, streaming=True)
     rows: list[Row] = []
-    for index, item in enumerate(ds):
-        if index >= max_scan:
-            break
+    for index, item in enumerate(islice(ds, max_scan)):
         rows.append(converter(item, index))
     return rows
 
@@ -244,7 +243,7 @@ def beir_stream_row(dataset_name: str, item: dict, index: int) -> Row:
 
 def amazon_stream_row(item: dict, index: int) -> Row:
     return Row(
-        dataset="amazon-science/esci-data",
+        dataset=AMAZON_DATASET,
         split=str(item.get("split", "train")),
         source_item_id=f"query_id={item.get('query_id', index)};example_id={item.get('example_id', index)}",
         text=clean_text(item.get("query", "")),
@@ -329,30 +328,22 @@ def mental_health_query(row: Row) -> bool:
         "fascial stretch",
         "great depression",
         "epics of india",
+        "hormone therapy",
     ]
     return include and not any(term in low for term in exclude_terms)
 
 
 def technical_troubleshooting_query(row: Row) -> bool:
     low = row.text.lower()
-    include_terms = [
-        "fix",
-        "repair",
-        "infected",
-        "slow",
-        "crash",
-        "not working",
-        "error",
-        "download",
-        "install",
-        "android",
-        "iphone",
-        "chrome",
-        "windows",
-        "printer",
-        "wifi",
-    ]
-    include = keyword_filter(include_terms)(row)
+    # A troubleshooting verb alone also matches medical and other nontechnical queries.
+    technical_context = keyword_filter(
+        ["computer", "pc", "laptop", "android", "iphone", "chrome", "windows",
+         "printer", "wifi", "wi-fi", "software", "browser", "sata", "drive", "phone"]
+    )(row)
+    problem = keyword_filter(
+        ["fix", "repair", "infected", "slow", "crash", "not working", "error",
+         "download", "install", "upgrade", "charging", "delete", "readable"]
+    )(row)
     exclude_terms = [
         "bachelor",
         "programming language",
@@ -364,7 +355,7 @@ def technical_troubleshooting_query(row: Row) -> bool:
         "phone number",
         "percentage of terrorists",
     ]
-    return include and not any(term in low for term in exclude_terms)
+    return technical_context and problem and not any(term in low for term in exclude_terms)
 
 
 def dedupe_rows(rows: Iterable[Row]) -> list[Row]:
@@ -539,8 +530,8 @@ def write_outputs(samples: dict[str, list[Row]]) -> None:
         "seed": SEED,
         "n_queries": len(rows),
         "categories": {category: len(items) for category, items in samples.items()},
-        "method": "stratified benchmark-original query sampling; keyword-filtered within broad benchmarks where no dedicated category benchmark exists",
-        "note": "The query text is copied from benchmark query rows. No prior pilot annotations are used.",
+        "method": "stratified sampling from bounded dataset prefixes; keyword-filtered within broad benchmarks where no dedicated category benchmark exists",
+        "note": "Query text is copied from benchmark rows. Categories are heuristic and require review; this is not a uniform sample of the complete datasets. No prior pilot annotations are used.",
     }
     (CONFIG_DIR / "sampling_manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -551,7 +542,7 @@ def main() -> None:
     rng = random.Random(SEED)
 
     amazon = stream_rows(
-        "khanmu2003/amazon-shopping-queries-dataset",
+        AMAZON_DATASET,
         None,
         "train",
         amazon_stream_row,

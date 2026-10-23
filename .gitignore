@@ -7,21 +7,7 @@ __pycache__/
 .env.*
 !.env.example
 
-# Keep the public repository metadata-only.
-data/**/raw/
-data/**/collections/
-data/**/processed/openai_web_search_results.jsonl
-data/**/processed/inspection_report.md
-data/**/fresh_page_audit/fetch_manifest.csv
-data/**/fresh_page_audit/review_queue.csv
-data/**/page_audit/fetch_manifest.csv
-data/**/page_audit/review_queue.csv
-
-# Fetched third-party webpage/PDF caches are large and may contain copyrighted text.
-data/**/fresh_page_audit/raw/
-data/**/fresh_page_audit/texts/
-data/**/page_audit/raw/
-data/**/page_audit/texts/
-
-# Advisor-facing notes and presentation materials stay local.
-reports/
+# Query samples, collection outputs, caches, and exported reports stay local.
+/config/
+/data/
+/reports/
